@@ -4,7 +4,7 @@
 #
 # OGF_Table2Folder.py
 #
-# Version 1.0
+# Version 1.1
 #
 # This Python 3 script allows the user to filter the ortholog files, resulting from the output created 
 # with Orthofinder 2.5.5 by Emms, D.M. et al. (2019), from Orthogroups.GeneCount.tsv to a new folder 
@@ -47,9 +47,7 @@ ogf = argparse.ArgumentParser(description="This Python 3 script allows the user 
 
 ogf.add_argument("--input", "-i", dest="input_orthofinder_folder", required=True, type=str, help="The full path to the main directory which has the OrthoFinder run(s) and fastas.")
 
-ogf.add_argument("--output", "-o", dest="output_orthologs_folder", required=True, type=str, help="The full path to new folder that will contain the desired orthologs.")
-
-ogf.add_argument("--missing", "-t", dest="missing_taxa", required=True, choices=range(0.1, 1.0), type=float, help="The proportion of missing taxa.")
+ogf.add_argument("--missing", "-t", dest="missing_taxa", required=True, choices=np.arange(0.1, 1.1, 0.1, dtype=float), type=float, help="The proportion of missing taxa.")
 
 ogf.add_argument("--copies", "-c", dest="maximum_copies", required=True, type=int, help="The maximum number of copies permitted.")
 
@@ -58,9 +56,8 @@ args = ogf.parse_args()
 class Table2Folder:
     """Contains the functions necessary to parse the information stored in Orthogroups.GeneCount.tsv, and copies the desired orthologs to a new folder."""
 
-    def __init__(self, orthofinder_directory, output_directory, missing_taxa, maximum_copies):
+    def __init__(self, orthofinder_directory, missing_taxa, maximum_copies):
         self.of_dir = orthofinder_directory
-        self.out_dir = output_directory
         self.missing = missing_taxa
         self.copies = maximum_copies
     
@@ -71,41 +68,40 @@ class Table2Folder:
         if "OrthoFinder" in os.listdir(self.of_dir):
             os.chdir(os.path.join(self.of_dir, "OrthoFinder"))
         else:
-            raise FileNotFoundError("Could not find OrthoFinder folder in {}.".format(self.of_dir))
+            raise FileNotFoundError("\n!!! Could not find OrthoFinder folder in {}. !!!\n".format(self.of_dir))
         
-        of_folder = os.chdir()
+        of_folder = os.getcwd()
 
         ### Check how many runs there are, and choose the desired one     
         runs = os.listdir(of_folder)
-
+        
         ### For only 1 run    
         if len(runs) == 1:
-            os.chdir(os.path.join(of_folder, runs))
-            print(f"Found OrthoFinder run folder. Retrieving orthologs...")
-
+            os.chdir(os.path.join(of_folder, runs[0]))
+            print(f"\n********* Found OrthoFinder run folder. Retrieving orthologs... *********\n")
 
         ### For no runs
         elif len(runs) == 0:
-            raise FileNotFoundError("Could not find any OrthoFinder runs in {}.".format(of_folder))
+            raise FileNotFoundError("\n!!! Could not find any OrthoFinder runs in {}. !!!\n".format(of_folder))
         
         ### For more than 1 run
         elif len(runs) > 1:
-            print("Please choose the desired OrthoFinder run:")
+            print("\n********* Please choose the desired OrthoFinder run below. *********\n")
             for index, run in enumerate(runs):
                 print(f"{index + 1}: {run}")
 
             while True:
                 try:
-                    choice = int(input("Select the desired run by typing the corresponding number:"))  
+                    choice = int(input("\n---> Select the desired run by typing the corresponding number: "))  
                     if 1 <= choice <= len(runs):
                         selected_run = runs[choice - 1]
-                        print(f"Found OrthoFinder run folder. Retrieving orthologs...")
+                        print(f"\n\n********* Found OrthoFinder run folder. Retrieving orthologs... *********\n")
                         break
                     else:
-                        print(f"Out of bounds. Please enter a number between 1 and {len(runs)}.")
+                        print(f"\n!!! Out of bounds. Please enter a number between 1 and {len(runs)}. !!!\n")
                 
                 except ValueError:
-                    print("Invalid input. Please enter a number.")
+                    print("\n!!! Invalid input. Please enter a number. !!!\n")
 
             os.chdir(os.path.join(of_folder, selected_run))               
 
@@ -120,11 +116,11 @@ class Table2Folder:
         tsv_file_name = "Orthogroups.GeneCount.tsv"
 
         if not os.path.exists(tsv_file_name):
-            raise FileNotFoundError(f"Could not find {tsv_file_name} in 'Orthogroups' folder.")
+            raise FileNotFoundError(f"\n!!! Could not find {tsv_file_name} in 'Orthogroups' folder. !!!\n")
         
         with open(tsv_file_name, "r") as file:
-            ortologs = file.readlines()
-        
+            orthologs = file.readlines()
+
         ### Create a list with the desired orthologs and call the missing taxa and maximum copies arguments
         line_list = []
         missing = self.missing   ### Float
@@ -132,7 +128,7 @@ class Table2Folder:
         copies = self.copies   ### Integer
         final_list = []
 
-        for line in ortologs[1:]:
+        for line in orthologs[1:]:
             ### Split each line by tabs, tab separated values file
             columns = line.strip().split('\t')
 
@@ -141,18 +137,23 @@ class Table2Folder:
 
             ### Append the remaining data to a list
             line_list.append(columns)
-
+        
             ### Apply the thresholds defined by the user
-            for entries in line_list:
-                proportion = np.count_nonzero(entries == 0) / (len(entries) - 1)
-                if proportion <= missing:
-                    missing_list.append(entries)
+        for entries in line_list:
+            count = sum( x == '0' for x in entries)
+            proportion = count / (len(entries) - 1)
+            if proportion <= missing:
+                missing_list.append(entries)
+        line_list = []
+        print(f"\n********* Filtered orthologs based on the percentage of missing taxa allowed... *********\n")
 
-            for entries in missing_list:
-                ### Convert the numeric entries to integers so they can be matched to the copy number threshold
-                integers = list(map(int, missing_list[1:]))
-                if all(x <= copies for x in integers):
-                    final_list.append(missing_list)
+        for entries in missing_list:
+            ### Convert the numeric entries to integers so they can be matched to the copy number threshold
+            integers = list(map(int, entries[1:]))
+            if all(x <= copies for x in integers):
+                final_list.append(entries)
+        missing_list = []
+        print(f"\n********* Filtered orthologs based on the maximum number of copies allowed... *********\n")
 
         ### Convert the final list into a .txt file containing solely the ortholog file names
         first_elements = [entry[0] for entry in final_list]
@@ -162,17 +163,17 @@ class Table2Folder:
 
         ### Write the previous variable to a new text file
         with open("FilteredOrthologs.txt", "w") as file:
-            for element in first_elements:
-                file.write(element + "\n")
+            for entry in first_elements:
+                file.write(entry + "\n")
         
-        print(f"Orthologs succesfully retrieved. Copying to a new folder...")
+        print(f"\n********* Orthologs succesfully retrieved. Copying to a new folder... *********\n")
                     
 
     def List2Folder(self):    
         """This function will copy and paste the desired orthologs to a new folder contained in the 'Orthogroups' folder."""
 
         ### Define current working directory
-        current_directory = os.getcwd
+        current_directory = os.getcwd()
         filtered_ogs = os.path.join(current_directory, "Filtered_Orthologs")
 
         ### Create the folder if there is none yet
@@ -189,26 +190,26 @@ class Table2Folder:
         ### Iterate through the orthologs
         for label in og_names:
             ### Check if any .fa file corresponds to the label
-            file_path = os.path.join(current_directory, "Orthogroup_Sequences", label, ".fa")
+            fasta = "{}.fa".format(label)
+            file_path = os.path.join(current_directory, "Orthogroup_Sequences", fasta)
 
             if os.path.exists(file_path):
                 ### Copy the file to the Filtered_Orthologs directory
-                destination = os.path.join(filtered_ogs, label, ".fa")
+                destination = os.path.join(filtered_ogs, fasta)
                 shutil.copy2(file_path, destination)
                 og_count += 1 
             else:
-                print(f"File {label}.fa not found.")
+                print(f"File {fasta} not found.")
 
-        print(f"{og_count} orthologs were identified and successfully copied to the 'Filtered_Orthologs' folder.")
+        print(f"\n********* {og_count} orthologs were identified and successfully copied to the 'Filtered_Orthologs' folder. *********\n")
 
 def main():
     ### Matching arguments with their intended variables
     orthofinder_directory = args.input_orthofinder_folder
-    output_directory = args.output_orthologs_folder
     missing_taxa = args.missing_taxa
     maximum_copies = args.maximum_copies
 
-    table2folder = Table2Folder(orthofinder_directory, output_directory, missing_taxa, maximum_copies)
+    table2folder = Table2Folder(orthofinder_directory, missing_taxa, maximum_copies)
 
     ### Start running the functions
     table2folder.MainDir2OFolder()
